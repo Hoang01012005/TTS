@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vietnamese VITS TTS - Trình tạo Giọng nói Tiếng Việt</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="background-decor">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <div class="app-container">
+        <header>
+            <div class="header-top">
+                <div class="logo">
+                    <i class="fa-solid fa-wand-magic-sparkles logo-icon"></i>
+                    <h1>VITS<span>TTS</span></h1>
+                </div>
+                <button id="theme-toggle" class="theme-toggle-btn" title="Chuyển đổi giao diện Sáng/Tối">
+                    <i class="fa-solid fa-sun icon-sun"></i>
+                    <i class="fa-solid fa-moon icon-moon"></i>
+                </button>
+            </div>
+            <p class="subtitle">Hệ thống tổng hợp giọng nói Tiếng Việt chất lượng cao (ONNX Model)</p>
+        </header>
+
+        <main class="grid-layout">
+            <!-- Left Panel: Input & Controls -->
+            <section class="panel glass-panel input-panel">
+                <div class="panel-header">
+                    <h2><i class="fa-regular fa-keyboard"></i> Nhập văn bản</h2>
+                    <span class="badge">Tiếng Việt</span>
+                </div>
+                
+                <div class="textarea-wrapper">
+                    <textarea id="text-input" placeholder="Nhập câu hoặc đoạn văn bản tiếng Việt tại đây để chuyển thành giọng nói..." maxlength="1000"></textarea>
+                    <div class="textarea-footer">
+                        <span id="char-count">0 / 1000 ký tự</span>
+                        <button id="clear-btn" title="Xóa toàn bộ"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3><i class="fa-solid fa-sliders"></i> Tùy chỉnh thông số giọng nói</h3>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="length-scale">
+                                <i class="fa-solid fa-gauge-high"></i> Tốc độ nói (Speed)
+                            </label>
+                            <span class="value-display" id="length-scale-val">1.0x</span>
+                        </div>
+                        <input type="range" id="length-scale" min="0.5" max="2.0" step="0.1" value="1.0" class="slider">
+                        <div class="slider-labels">
+                            <span>Nhanh (0.5)</span>
+                            <span>Mặc định (1.0)</span>
+                            <span>Chậm (2.0)</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label for="noise-scale">
+                                <i class="fa-solid fa-wand-magic"></i> Độ biểu cảm (Expression)
+                            </label>
+                            <span class="value-display" id="noise-scale-val">0.667</span>
+                        </div>
+                        <input type="range" id="noise-scale" min="0.1" max="1.5" step="0.05" value="0.667" class="slider">
+                        <div class="slider-labels">
+                            <span>Đều đều</span>
+                            <span>Mặc định</span>
+                            <span>Biến động</span>
+                        </div>
+                    </div>
+
+                    <details class="advanced-settings">
+                        <summary>Cấu hình nâng cao</summary>
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <label for="noise-w">
+                                    <i class="fa-solid fa-wave-square"></i> Độ tự nhiên của âm vị (Phoneme Naturalness)
+                                </label>
+                                <span class="value-display" id="noise-w-val">0.8</span>
+                            </div>
+                            <input type="range" id="noise-w" min="0.1" max="1.5" step="0.1" value="0.8" class="slider">
+                        </div>
+                    </details>
+                </div>
+
+                <button id="generate-btn" class="btn btn-primary">
+                    <span class="btn-text">TẠO GIỌNG NÓI</span>
+                    <i class="fa-solid fa-microphone btn-icon"></i>
+                    <div class="spinner"></div>
+                </button>
+            </section>
+
+            <!-- Right Panel: Output & History -->
+            <section class="panel glass-panel output-panel">
+                <div class="panel-header">
+                    <h2><i class="fa-solid fa-headphones"></i> Kết quả âm thanh</h2>
+                </div>
+
+                <div class="audio-result-card">
+                    <!-- Visualizer Container -->
+                    <div class="visualizer-container">
+                        <canvas id="waveform-canvas"></canvas>
+                        <div class="visualizer-overlay" id="visualizer-idle-msg">
+                            <i class="fa-solid fa-volume-high wave-icon-pulsing"></i>
+                            <p>Sẵn sàng tổng hợp giọng nói</p>
+                        </div>
+                    </div>
+
+                    <div class="result-details" id="result-details" style="display: none;">
+                        <div class="stat-grid">
+                            <div class="stat-item">
+                                <span class="stat-label">Độ dài</span>
+                                <span class="stat-val" id="duration-val">0.0s</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Thời gian xử lý</span>
+                                <span class="stat-val" id="elapsed-val">0.0s</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Chỉ số RTF</span>
+                                <span class="stat-val" id="rtf-val">0.00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Custom Audio Player -->
+                    <div class="custom-player-wrapper" id="player-wrapper" style="display: none;">
+                        <audio id="audio-element"></audio>
+                        
+                        <div class="player-controls">
+                            <button id="play-pause-btn" class="player-btn"><i class="fa-solid fa-play"></i></button>
+                            <span class="time-display" id="current-time">0:00</span>
+                            <div class="progress-container" id="progress-container">
+                                <div class="progress-bar" id="progress-bar"></div>
+                            </div>
+                            <span class="time-display" id="total-time">0:00</span>
+                            <button id="download-btn" class="player-btn" title="Tải xuống file WAV"><i class="fa-solid fa-download"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="history-container">
+                    <h3><i class="fa-solid fa-clock-rotate-left"></i> Lịch sử tạo giọng nói</h3>
+                    <div class="history-list" id="history-list">
+                        <div class="empty-history">
+                            <i class="fa-regular fa-folder-open"></i>
+                            <p>Chưa có lịch sử. Hãy tạo giọng nói trước!</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <footer>
+            <p>Vietnamese VITS TTS System • Powered by ONNX Runtime & Python Flask</p>
+        </footer>
+    </div>
+
+    <!-- Custom Javascript -->
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

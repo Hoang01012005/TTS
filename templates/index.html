@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VITS TTS - Sinh Giọng Nói AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --primary: #8b5cf6;
+            --primary-hover: #7c3aed;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            overflow-x: hidden;
+        }
+
+        .background-blobs {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 0;
+        }
+
+        .blob {
+            position: absolute;
+            filter: blur(80px);
+            opacity: 0.5;
+            border-radius: 50%;
+            animation: float 10s infinite alternate;
+        }
+
+        .blob-1 {
+            top: -10%;
+            left: -10%;
+            width: 400px;
+            height: 400px;
+            background: #8b5cf6;
+        }
+
+        .blob-2 {
+            bottom: -10%;
+            right: -10%;
+            width: 500px;
+            height: 500px;
+            background: #ec4899;
+            animation-delay: -5s;
+        }
+
+        @keyframes float {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(30px, 50px) scale(1.1); }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 800px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 3rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.6);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #a78bfa, #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+
+        p.subtitle {
+            text-align: center;
+            color: var(--text-muted);
+            margin-bottom: 2.5rem;
+            font-size: 1.1rem;
+        }
+
+        .input-group {
+            margin-bottom: 2rem;
+            position: relative;
+        }
+
+        textarea {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 1.1rem;
+            resize: vertical;
+            min-height: 150px;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1);
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        textarea::placeholder {
+            color: #64748b;
+        }
+
+        .btn-generate {
+            width: 100%;
+            padding: 1.25rem;
+            background: linear-gradient(135deg, var(--primary) 0%, #6d28d9 100%);
+            color: white;
+            border: none;
+            border-radius: 16px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-generate:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -10px var(--primary);
+        }
+        
+        .btn-generate:active:not(:disabled) {
+            transform: translateY(1px);
+        }
+
+        .btn-generate:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .result-container {
+            margin-top: 2.5rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--glass-border);
+            display: none;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.5s ease;
+        }
+
+        .result-container.show {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .result-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #e2e8f0;
+        }
+
+        audio {
+            width: 100%;
+            height: 54px;
+            border-radius: 12px;
+            outline: none;
+        }
+
+        /* Tùy chỉnh thanh audio cho chrome/safari */
+        audio::-webkit-media-controls-panel {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        audio::-webkit-media-controls-current-time-display,
+        audio::-webkit-media-controls-time-remaining-display {
+            color: white;
+        }
+
+        .error-message {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 1rem;
+            border-radius: 12px;
+            margin-top: 1rem;
+            display: none;
+            font-size: 0.95rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <div class="container">
+        <h1>Giọng Nói Nhân Tạo AI</h1>
+        <p class="subtitle">Nhập văn bản tiếng Việt để trải nghiệm mô hình VITS</p>
+
+        <div class="input-group">
+            <textarea id="text-input" placeholder="Ví dụ: Xin chào Việt Nam, đây là mô hình trí tuệ nhân tạo tổng hợp giọng nói..." spellcheck="false"></textarea>
+        </div>
+
+        <button id="btn-generate" class="btn-generate">
+            <div class="spinner" id="spinner"></div>
+            <span id="btn-text">Tổng Hợp Giọng Nói</span>
+            <svg id="btn-icon" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+        </button>
+
+        <div id="error-box" class="error-message"></div>
+
+        <div id="result-box" class="result-container">
+            <div class="result-title">Kết quả:</div>
+            <audio id="audio-player" controls></audio>
+        </div>
+    </div>
+
+    <script>
+        const btnGenerate = document.getElementById('btn-generate');
+        const textInput = document.getElementById('text-input');
+        const spinner = document.getElementById('spinner');
+        const btnText = document.getElementById('btn-text');
+        const btnIcon = document.getElementById('btn-icon');
+        const resultBox = document.getElementById('result-box');
+        const audioPlayer = document.getElementById('audio-player');
+        const errorBox = document.getElementById('error-box');
+
+        btnGenerate.addEventListener('click', async () => {
+            const text = textInput.value.trim();
+            if (!text) {
+                showError("Vui lòng nhập văn bản cần tổng hợp.");
+                return;
+            }
+
+            // UI Loading state
+            btnGenerate.disabled = true;
+            spinner.style.display = 'block';
+            btnText.textContent = 'Đang xử lý...';
+            btnIcon.style.display = 'none';
+            resultBox.classList.remove('show');
+            errorBox.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/tts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text })
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'Có lỗi xảy ra khi gọi API');
+                }
+
+                // Get audio blob
+                const blob = await response.blob();
+                const audioUrl = URL.createObjectURL(blob);
+                
+                // Play audio
+                audioPlayer.src = audioUrl;
+                resultBox.classList.add('show');
+                
+                // Auto play optional
+                audioPlayer.play();
+
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                // UI Reset state
+                btnGenerate.disabled = false;
+                spinner.style.display = 'none';
+                btnText.textContent = 'Tổng Hợp Giọng Nói';
+                btnIcon.style.display = 'block';
+            }
+        });
+
+        function showError(msg) {
+            errorBox.textContent = msg;
+            errorBox.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
