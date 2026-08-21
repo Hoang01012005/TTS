@@ -4,3 +4,12 @@ __pycache__/
 .DS_Store
 data/
 *.ckpt
+
+# Bỏ qua các file model siêu nặng
+checkpoints/
+*.safetensors
+
+# Bỏ qua các file tạo ra trong quá trình chạy
+output/
+static/audio/
+*.docx

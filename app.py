@@ -22,24 +22,26 @@ app = Flask(__name__)
 
 # Cấu hình đường dẫn
 PROJECT_DIR = Path(__file__).resolve().parent
-ONNX_MODEL_PATH = PROJECT_DIR / "model_epoch_4988.onnx"
-ONNX_CONFIG_PATH = PROJECT_DIR / "model_epoch_4988.onnx.json"
+# Cấu hình đường dẫn các mô hình
+MODELS_INFO = {
+    "voice1": {
+        "name": "Giọng 1 (Epoch 4988)",
+        "model_path": PROJECT_DIR / "model_epoch_4988.onnx",
+        "config_path": PROJECT_DIR / "model_epoch_4988.onnx.json",
+    },
+    "voice2": {
+        "name": "Giọng 2 (Giong Nam)",
+        "model_path": PROJECT_DIR / "giongnam.onnx",
+        "config_path": PROJECT_DIR / "giongnam.json",
+    }
+}
 
 # Biến toàn cục cho model
-session = None
-config = None
-sample_rate = 22050
+loaded_models = {}
 use_piper = False
 
 def init_model():
-    global session, config, sample_rate, use_piper
-    
-    if not ONNX_MODEL_PATH.exists() or not ONNX_CONFIG_PATH.exists():
-        print("Không tìm thấy model hoặc config!")
-        return False
-        
-    config = load_config(ONNX_CONFIG_PATH)
-    sample_rate = config.get("audio", {}).get("sample_rate", 22050)
+    global loaded_models, use_piper
     
     sess_options = ort.SessionOptions()
     sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -50,19 +52,37 @@ def init_model():
         providers.append("CUDAExecutionProvider")
     providers.append("CPUExecutionProvider")
     
-    session = ort.InferenceSession(
-        str(ONNX_MODEL_PATH),
-        sess_options=sess_options,
-        providers=providers,
-    )
-    
+    for voice_id, info in MODELS_INFO.items():
+        if not info["model_path"].exists() or not info["config_path"].exists():
+            print(f"Không tìm thấy model hoặc config cho {info['name']}! Bỏ qua.")
+            continue
+            
+        try:
+            config = load_config(info["config_path"])
+            sample_rate = config.get("audio", {}).get("sample_rate", 22050)
+            
+            session = ort.InferenceSession(
+                str(info["model_path"]),
+                sess_options=sess_options,
+                providers=providers,
+            )
+            
+            loaded_models[voice_id] = {
+                "session": session,
+                "config": config,
+                "sample_rate": sample_rate
+            }
+            print(f"✅ Đã tải thành công: {info['name']}")
+        except Exception as e:
+            print(f"❌ Lỗi tải mô hình {info['name']}: {e}")
+            
     try:
         import piper_phonemize
         use_piper = True
     except ImportError:
         use_piper = False
         
-    return True
+    return len(loaded_models) > 0
 
 def audio_to_wav_bytes(audio: np.ndarray, sr: int) -> bytes:
     import wave
@@ -83,18 +103,25 @@ def index():
 
 @app.route('/api/tts', methods=['POST'])
 def tts():
-    if session is None:
-        return jsonify({"error": "Model chưa được tải"}), 500
+    if not loaded_models:
+        return jsonify({"error": "Chưa có mô hình nào được tải"}), 500
         
     data = request.json
     text = data.get("text", "").strip()
+    voice_id = data.get("voice", "voice1")
     
     if not text:
         return jsonify({"error": "Vui lòng nhập văn bản"}), 400
         
+    if voice_id not in loaded_models:
+        # Mặc định lấy model đầu tiên nếu id không hợp lệ
+        voice_id = list(loaded_models.keys())[0]
+        
+    model_data = loaded_models[voice_id]
+    
     try:
-        audio = synthesize(text, session, config, use_piper)
-        wav_bytes = audio_to_wav_bytes(audio, sample_rate)
+        audio = synthesize(text, model_data["session"], model_data["config"], use_piper)
+        wav_bytes = audio_to_wav_bytes(audio, model_data["sample_rate"])
         
         return send_file(
             io.BytesIO(wav_bytes),
