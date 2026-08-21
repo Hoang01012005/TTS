@@ -37,52 +37,75 @@ MODELS_INFO = {
 }
 
 # Biến toàn cục cho model
-loaded_models = {}
+current_voice_id = None
+current_session = None
+current_config = None
+current_sample_rate = 22050
 use_piper = False
 
+def load_voice(voice_id):
+    global current_voice_id, current_session, current_config, current_sample_rate
+    
+    # Nếu đã load đúng giọng này rồi thì dùng luôn
+    if voice_id == current_voice_id and current_session is not None:
+        return True
+        
+    info = MODELS_INFO.get(voice_id)
+    if not info:
+        return False
+        
+    if not info["model_path"].exists() or not info["config_path"].exists():
+        print(f"Không tìm thấy model hoặc config cho {info['name']}! Bỏ qua.")
+        return False
+        
+    try:
+        # Xóa model cũ khỏi RAM trước khi load model mới
+        current_session = None
+        current_config = None
+        import gc
+        gc.collect()
+
+        config = load_config(info["config_path"])
+        sample_rate = config.get("audio", {}).get("sample_rate", 22050)
+        
+        sess_options = ort.SessionOptions()
+        # Chuyển xuống BASIC để tiết kiệm rất nhiều RAM trên Render Free
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+        
+        providers = []
+        available = ort.get_available_providers()
+        if "CUDAExecutionProvider" in available:
+            providers.append("CUDAExecutionProvider")
+        providers.append("CPUExecutionProvider")
+        
+        session = ort.InferenceSession(
+            str(info["model_path"]),
+            sess_options=sess_options,
+            providers=providers,
+        )
+        
+        current_session = session
+        current_config = config
+        current_sample_rate = sample_rate
+        current_voice_id = voice_id
+        
+        print(f"✅ Đã tải thành công: {info['name']}")
+        return True
+    except Exception as e:
+        print(f"❌ Lỗi tải mô hình {info['name']}: {e}")
+        return False
+
 def init_model():
-    global loaded_models, use_piper
+    global use_piper
     
-    sess_options = ort.SessionOptions()
-    sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    
-    providers = []
-    available = ort.get_available_providers()
-    if "CUDAExecutionProvider" in available:
-        providers.append("CUDAExecutionProvider")
-    providers.append("CPUExecutionProvider")
-    
-    for voice_id, info in MODELS_INFO.items():
-        if not info["model_path"].exists() or not info["config_path"].exists():
-            print(f"Không tìm thấy model hoặc config cho {info['name']}! Bỏ qua.")
-            continue
-            
-        try:
-            config = load_config(info["config_path"])
-            sample_rate = config.get("audio", {}).get("sample_rate", 22050)
-            
-            session = ort.InferenceSession(
-                str(info["model_path"]),
-                sess_options=sess_options,
-                providers=providers,
-            )
-            
-            loaded_models[voice_id] = {
-                "session": session,
-                "config": config,
-                "sample_rate": sample_rate
-            }
-            print(f"✅ Đã tải thành công: {info['name']}")
-        except Exception as e:
-            print(f"❌ Lỗi tải mô hình {info['name']}: {e}")
-            
     try:
         import piper_phonemize
         use_piper = True
     except ImportError:
         use_piper = False
         
-    return len(loaded_models) > 0
+    # Mặc định tải giọng 1 khi khởi động
+    return load_voice("voice1")
 
 def audio_to_wav_bytes(audio: np.ndarray, sr: int) -> bytes:
     import wave
@@ -103,9 +126,6 @@ def index():
 
 @app.route('/api/tts', methods=['POST'])
 def tts():
-    if not loaded_models:
-        return jsonify({"error": "Chưa có mô hình nào được tải"}), 500
-        
     data = request.json
     text = data.get("text", "").strip()
     voice_id = data.get("voice", "voice1")
@@ -113,15 +133,15 @@ def tts():
     if not text:
         return jsonify({"error": "Vui lòng nhập văn bản"}), 400
         
-    if voice_id not in loaded_models:
-        # Mặc định lấy model đầu tiên nếu id không hợp lệ
-        voice_id = list(loaded_models.keys())[0]
+    if voice_id not in MODELS_INFO:
+        voice_id = "voice1"
         
-    model_data = loaded_models[voice_id]
+    if not load_voice(voice_id):
+        return jsonify({"error": "Không thể tải mô hình cho giọng này"}), 500
     
     try:
-        audio = synthesize(text, model_data["session"], model_data["config"], use_piper)
-        wav_bytes = audio_to_wav_bytes(audio, model_data["sample_rate"])
+        audio = synthesize(text, current_session, current_config, use_piper)
+        wav_bytes = audio_to_wav_bytes(audio, current_sample_rate)
         
         return send_file(
             io.BytesIO(wav_bytes),
