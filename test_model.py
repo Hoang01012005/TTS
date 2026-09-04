@@ -11,6 +11,8 @@ Yêu cầu cài đặt:
     pip install piper-phonemize-fix              # Windows (có sẵn wheel)
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -18,6 +20,7 @@ import sys
 import time
 import wave
 from pathlib import Path
+from typing import Optional, List, Tuple
 
 # Fix encoding cho Windows console (tránh UnicodeEncodeError)
 if sys.platform == "win32":
@@ -119,9 +122,9 @@ def synthesize(
     session: ort.InferenceSession,
     config: dict,
     use_piper_phonemize: bool = True,
-    noise_scale: float | None = None,
-    length_scale: float | None = None,
-    noise_w: float | None = None,
+    noise_scale: Optional[float] = None,
+    length_scale: Optional[float] = None,
+    noise_w: Optional[float] = None,
 ) -> np.ndarray:
     """
     Chạy inference VITS ONNX cho 1 câu:
