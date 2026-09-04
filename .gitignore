@@ -13,3 +13,4 @@ checkpoints/
 output/
 static/audio/
 *.docx
+file nop/

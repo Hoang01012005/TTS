@@ -16,7 +16,7 @@ if sys.platform == "win32":
         pass
 
 # Import các hàm từ test_model
-from test_model import load_config, synthesize
+from test_model import load_config, synthesize, synthesize_natural
 
 app = Flask(__name__)
 
@@ -126,7 +126,7 @@ def index():
 
 @app.route('/api/tts', methods=['POST'])
 def tts():
-    data = request.json
+    data = request.json or {}
     text = data.get("text", "").strip()
     voice_id = data.get("voice", "voice1")
     
@@ -139,8 +139,57 @@ def tts():
     if not load_voice(voice_id):
         return jsonify({"error": "Không thể tải mô hình cho giọng này"}), 500
     
+    # Các tham số điều khiển ngắt nghỉ & nhịp điệu (áp dụng cho cả 2 giọng)
+    natural_mode = data.get("natural_mode", True)
     try:
-        audio = synthesize(text, current_session, current_config, use_piper)
+        pause_duration = float(data.get("pause_duration", 0.28))
+    except (ValueError, TypeError):
+        pause_duration = 0.28
+
+    try:
+        speed = float(data.get("speed", 1.08))  # length_scale
+    except (ValueError, TypeError):
+        speed = 1.08
+
+    try:
+        noise_scale = float(data.get("noise_scale", 0.70))
+    except (ValueError, TypeError):
+        noise_scale = 0.70
+
+    try:
+        noise_w = float(data.get("noise_w", 0.85))
+    except (ValueError, TypeError):
+        noise_w = 0.85
+
+    # Giới hạn an toàn
+    pause_duration = max(0.05, min(pause_duration, 2.0))
+    speed = max(0.5, min(speed, 2.0))
+    noise_scale = max(0.1, min(noise_scale, 1.5))
+    noise_w = max(0.1, min(noise_w, 1.5))
+    
+    try:
+        if natural_mode:
+            audio = synthesize_natural(
+                text=text,
+                session=current_session,
+                config=current_config,
+                pause_duration=pause_duration,
+                length_scale=speed,
+                noise_scale=noise_scale,
+                noise_w=noise_w,
+                use_piper_phonemize=use_piper,
+            )
+        else:
+            audio = synthesize(
+                text=text,
+                session=current_session,
+                config=current_config,
+                use_piper_phonemize=use_piper,
+                noise_scale=noise_scale,
+                length_scale=speed,
+                noise_w=noise_w,
+            )
+
         wav_bytes = audio_to_wav_bytes(audio, current_sample_rate)
         
         return send_file(

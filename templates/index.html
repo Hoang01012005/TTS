@@ -260,6 +260,170 @@
             display: none;
             font-size: 0.95rem;
         }
+
+        /* ─── Prosody / Natural Pause Control Panel ─── */
+        .prosody-panel {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .toggle-container input {
+            display: none;
+        }
+
+        .toggle-slider {
+            width: 44px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            position: relative;
+            transition: background 0.3s ease;
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: white;
+            top: 3px;
+            left: 3px;
+            transition: transform 0.3s ease;
+        }
+
+        .toggle-container input:checked + .toggle-slider {
+            background: var(--primary);
+        }
+
+        .toggle-container input:checked + .toggle-slider::before {
+            transform: translateX(20px);
+        }
+
+        .toggle-label {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #f1f5f9;
+        }
+
+        .badge-status {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: rgba(139, 92, 246, 0.2);
+            color: #c4b5fd;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .sliders-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+            margin-bottom: 1rem;
+            transition: opacity 0.3s ease;
+        }
+
+        @media (max-width: 600px) {
+            .sliders-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .slider-group {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.85rem 1rem;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .slider-val {
+            color: #a78bfa;
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+
+        .tips-box {
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 12px;
+            padding: 0.85rem 1rem;
+            font-size: 0.85rem;
+            color: #94a3b8;
+            line-height: 1.6;
+        }
+
+        .tips-title {
+            color: #cbd5e1;
+            font-weight: 600;
+            margin-bottom: 0.3rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tips-box code {
+            background: rgba(139, 92, 246, 0.2);
+            color: #ddd6fe;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+
+        .sample-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 0.6rem;
+            flex-wrap: wrap;
+        }
+
+        .btn-sample {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #e2e8f0;
+            border-radius: 8px;
+            padding: 4px 10px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-sample:hover {
+            background: rgba(139, 92, 246, 0.25);
+            border-color: var(--primary);
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -278,7 +442,47 @@
                 <option value="voice1">Giọng 1 (Mặc định - Nữ/Epoch 4988)</option>
                 <option value="voice2">Giọng 2 (Giọng Nam)</option>
             </select>
-            <textarea id="text-input" placeholder="Ví dụ: Xin chào Việt Nam, đây là mô hình trí tuệ nhân tạo tổng hợp giọng nói..." spellcheck="false"></textarea>
+            <textarea id="text-input" placeholder="Ví dụ: Xin chào quý thầy cô và các bạn. Hôm nay, chúng tôi xin trình bày đề tài nghiên cứu..." spellcheck="false"></textarea>
+        </div>
+
+        <!-- Bảng điều khiển ngắt nghỉ tự nhiên -->
+        <div class="prosody-panel">
+            <div class="panel-header">
+                <label class="toggle-container" title="Bật để ngắt nghỉ và lấy hơi tự nhiên giữa các câu">
+                    <input type="checkbox" id="natural-mode-toggle" checked>
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">🌿 Ngắt nghỉ tự nhiên (Natural Prosody)</span>
+                </label>
+                <span class="badge-status" id="badge-mode">ĐANG BẬT</span>
+            </div>
+
+            <div class="sliders-row" id="sliders-container">
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <span>Khoảng nghỉ giữa câu</span>
+                        <span class="slider-val" id="pause-val">0.28s</span>
+                    </div>
+                    <input type="range" id="pause-slider" min="0.10" max="0.70" step="0.02" value="0.28">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <span>Tốc độ đọc</span>
+                        <span class="slider-val" id="speed-val">1.08x (Thong thả)</span>
+                    </div>
+                    <input type="range" id="speed-slider" min="0.85" max="1.30" step="0.02" value="1.08">
+                </div>
+            </div>
+
+            <div class="tips-box">
+                <div class="tips-title">💡 Mẹo tạo nhịp điệu tự nhiên:</div>
+                <div>• Kết thúc câu bằng <code>.</code>, <code>!</code>, <code>?</code> để có ngữ điệu trọn vẹn và tự động ngắt hơi.</div>
+                <div>• Chèn tag <code>[pause:0.5s]</code>, <code>[nghi:0.5s]</code> hoặc <code>...</code> vào bất cứ vị trí nào cần ngắt nhịp chủ động.</div>
+                <div class="sample-buttons">
+                    <button type="button" class="btn-sample" onclick="setSample(1)">📋 Mẫu thuyết trình</button>
+                    <button type="button" class="btn-sample" onclick="setSample(2)">⏸️ Mẫu chèn [pause]</button>
+                    <button type="button" class="btn-sample" onclick="setSample(3)">❓ Mẫu đối thoại</button>
+                </div>
+            </div>
         </div>
 
         <button id="btn-generate" class="btn-generate">
@@ -307,9 +511,57 @@
         const audioPlayer = document.getElementById('audio-player');
         const errorBox = document.getElementById('error-box');
 
+        // Prosody controls
+        const naturalToggle = document.getElementById('natural-mode-toggle');
+        const badgeMode = document.getElementById('badge-mode');
+        const slidersContainer = document.getElementById('sliders-container');
+        const pauseSlider = document.getElementById('pause-slider');
+        const pauseVal = document.getElementById('pause-val');
+        const speedSlider = document.getElementById('speed-slider');
+        const speedVal = document.getElementById('speed-val');
+
+        // Update UI khi toggle
+        naturalToggle.addEventListener('change', () => {
+            const isEnabled = naturalToggle.checked;
+            badgeMode.textContent = isEnabled ? 'ĐANG BẬT' : 'ĐÃ TẮT';
+            badgeMode.style.background = isEnabled ? 'rgba(139, 92, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+            badgeMode.style.color = isEnabled ? '#c4b5fd' : '#fca5a5';
+            badgeMode.style.borderColor = isEnabled ? 'rgba(139, 92, 246, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+            slidersContainer.style.opacity = isEnabled ? '1' : '0.4';
+            slidersContainer.style.pointerEvents = isEnabled ? 'auto' : 'none';
+        });
+
+        // Sliders live text
+        pauseSlider.addEventListener('input', () => {
+            pauseVal.textContent = parseFloat(pauseSlider.value).toFixed(2) + 's';
+        });
+
+        speedSlider.addEventListener('input', () => {
+            const val = parseFloat(speedSlider.value);
+            let desc = '';
+            if (val <= 0.95) desc = ' (Nhanh)';
+            else if (val <= 1.12) desc = ' (Thong thả)';
+            else desc = ' (Chậm rãi)';
+            speedVal.textContent = val.toFixed(2) + 'x' + desc;
+        });
+
+        // Set sample text
+        function setSample(type) {
+            if (type === 1) {
+                textInput.value = "Kính chào quý thầy cô và các bạn! Hôm nay, nhóm chúng tôi xin trình bày về đề tài tổng hợp tiếng nói tiếng Việt bằng mô hình VITS. Kính mời thầy cô cùng theo dõi bài báo cáo.";
+            } else if (type === 2) {
+                textInput.value = "Trí tuệ nhân tạo đang thay đổi thế giới. [pause:0.5s] Đặc biệt trong lĩnh vực xử lý giọng nói, [pause:0.3s] mô hình VITS đã mang lại chất lượng vượt bậc so với các phương pháp truyền thống.";
+            } else if (type === 3) {
+                textInput.value = "Xin chào bạn, hôm nay thời tiết thế nào? Thật tuyệt vời, chúng ta hãy cùng nhau bắt đầu buổi làm việc thật hiệu quả nhé!";
+            }
+        }
+
         btnGenerate.addEventListener('click', async () => {
             const text = textInput.value.trim();
             const voice = document.getElementById('voice-select').value;
+            const natural_mode = naturalToggle.checked;
+            const pause_duration = parseFloat(pauseSlider.value);
+            const speed = parseFloat(speedSlider.value);
             
             if (!text) {
                 showError("Vui lòng nhập văn bản cần tổng hợp.");
@@ -330,12 +582,26 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ text, voice })
+                    body: JSON.stringify({
+                        text,
+                        voice,
+                        natural_mode,
+                        pause_duration,
+                        speed
+                    })
                 });
 
                 if (!response.ok) {
-                    const errData = await response.json();
-                    throw new Error(errData.error || 'Có lỗi xảy ra khi gọi API');
+                    const text = await response.text();
+                    let errMsg = 'Có lỗi xảy ra khi gọi API (HTTP ' + response.status + ')';
+                    try {
+                        const errData = JSON.parse(text);
+                        errMsg = errData.error || errMsg;
+                    } catch (e) {
+                        console.error("API Error:", text);
+                        errMsg = 'Lỗi máy chủ: Server không phản hồi đúng định dạng. Vui lòng thử lại.';
+                    }
+                    throw new Error(errMsg);
                 }
 
                 // Get audio blob

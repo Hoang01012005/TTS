@@ -22,6 +22,10 @@ from flask import Flask, request, jsonify, render_template, send_from_directory
 # ──────────────────────── Đường dẫn thư mục ────────────────────────
 GUI_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = GUI_DIR.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+from test_model import synthesize_natural
+
 ONNX_MODEL_PATH = PROJECT_DIR / "model_epoch_4988.onnx"
 ONNX_CONFIG_PATH = PROJECT_DIR / "model_epoch_4988.onnx.json"
 AUDIO_OUTPUT_DIR = GUI_DIR / "static" / "audio"
@@ -217,8 +221,21 @@ def api_synthesize():
         output_file = AUDIO_OUTPUT_DIR / filename
 
         # Thực hiện tổng hợp giọng nói
+        natural_mode = data.get("natural_mode", True)
+        pause_duration = float(data.get("pause_duration", 0.28))
         start_time = time.perf_counter()
-        audio = synthesize(text, session, config, noise_scale, length_scale, noise_w)
+        if natural_mode:
+            audio = synthesize_natural(
+                text=text,
+                session=session,
+                config=config,
+                pause_duration=pause_duration,
+                length_scale=length_scale,
+                noise_scale=noise_scale,
+                noise_w=noise_w,
+            )
+        else:
+            audio = synthesize(text, session, config, noise_scale, length_scale, noise_w)
         elapsed = time.perf_counter() - start_time
         
         save_wav(audio, output_file, sample_rate)

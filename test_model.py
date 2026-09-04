@@ -13,6 +13,7 @@ Yêu cầu cài đặt:
 
 import json
 import os
+import re
 import sys
 import time
 import wave
@@ -118,9 +119,12 @@ def synthesize(
     session: ort.InferenceSession,
     config: dict,
     use_piper_phonemize: bool = True,
+    noise_scale: float | None = None,
+    length_scale: float | None = None,
+    noise_w: float | None = None,
 ) -> np.ndarray:
     """
-    Chạy inference VITS ONNX:
+    Chạy inference VITS ONNX cho 1 câu:
       text → phoneme IDs → ONNX model → audio waveform (numpy array)
     """
     # 1. Text → phoneme IDs
@@ -136,14 +140,14 @@ def synthesize(
     phoneme_ids_array = np.array([phoneme_ids], dtype=np.int64)        # (1, T)
     phoneme_ids_lengths = np.array([len(phoneme_ids)], dtype=np.int64) # (1,)
 
-    # Inference parameters từ config
+    # Inference parameters từ config (hoặc override nếu có truyền vào)
     inference_cfg = config.get("inference", {})
-    noise_scale = inference_cfg.get("noise_scale", 0.667)
-    length_scale = inference_cfg.get("length_scale", 1.0)
-    noise_w = inference_cfg.get("noise_w", 0.8)
+    ns = noise_scale if noise_scale is not None else inference_cfg.get("noise_scale", 0.667)
+    ls = length_scale if length_scale is not None else inference_cfg.get("length_scale", 1.0)
+    nw = noise_w if noise_w is not None else inference_cfg.get("noise_w", 0.8)
 
     # Piper VITS gộp 3 tham số vào 1 tensor "scales" shape [3]
-    scales = np.array([noise_scale, length_scale, noise_w], dtype=np.float32)
+    scales = np.array([ns, ls, nw], dtype=np.float32)
 
     # 3. Build feed dict dựa trên input names của model
     input_names = [inp.name for inp in session.get_inputs()]
@@ -175,6 +179,120 @@ def synthesize(
     audio = output[0].squeeze()  # (samples,)
 
     return audio
+
+
+# ──────────────────── Tách câu & ngắt nghỉ tự nhiên ────────────────────
+def split_text_into_segments(text: str, default_pause: float = 0.28) -> list[tuple[str, float]]:
+    """
+    Tách văn bản thành các câu và khoảng lặng tương ứng (tính bằng giây).
+    Hỗ trợ:
+    - Dấu kết thúc câu (. ! ? ; \n)
+    - Dấu ba chấm (...) -> chuyển thành khoảng nghỉ 0.35s
+    - Custom pause tags: [pause:0.5s], [pause:500ms], [pause], [nghi:0.5s], [nghi]
+    Trả về danh sách các tuple: (câu_văn, thời_gian_nghỉ_sau_câu)
+    """
+    text = text.strip()
+    if not text:
+        return []
+
+    # Chuẩn hóa dấu ba chấm thành tag ngắt nghỉ
+    text = re.sub(r'\.{3,}', ' [pause:0.35s] ', text)
+
+    # Regex tách theo pause tags hoặc dấu câu
+    pattern = r'(\[pause(?::\d+(?:\.\d+)?(?:s|ms)?)?\]|\[ngh[iỉ](?::\d+(?:\.\d+)?(?:s|ms)?)?\]|[.!?;\n]+)'
+    tokens = re.split(pattern, text, flags=re.IGNORECASE)
+
+    segments: list[tuple[str, float]] = []
+    current_text = ""
+
+    i = 0
+    while i < len(tokens):
+        part = tokens[i]
+        if part is None:
+            i += 1
+            continue
+        part_clean = part.strip()
+        if not part_clean:
+            i += 1
+            continue
+
+        match_tag = re.match(r'\[(pause|ngh[iỉ])(?::(\d+(?:\.\d+)?)(?:s|ms)?)?\]', part_clean, re.IGNORECASE)
+        match_punct = re.match(r'^[.!?;\n]+$', part_clean)
+
+        if match_tag:
+            time_val = match_tag.group(2)
+            pause_sec = default_pause
+            if time_val:
+                pause_sec = float(time_val)
+                if 'ms' in part_clean.lower():
+                    pause_sec /= 1000.0
+            if current_text.strip():
+                segments.append((current_text.strip(), pause_sec))
+                current_text = ""
+        elif match_punct:
+            pause_sec = default_pause if any(c in part_clean for c in '.!?\n') else 0.18
+            if current_text.strip():
+                sentence_with_punct = current_text.strip() + part_clean[0]
+                segments.append((sentence_with_punct.strip(), pause_sec))
+                current_text = ""
+        else:
+            current_text += (' ' if current_text else '') + part_clean
+        i += 1
+
+    if current_text.strip():
+        segments.append((current_text.strip(), 0.0))
+
+    return segments
+
+
+def synthesize_natural(
+    text: str,
+    session: ort.InferenceSession,
+    config: dict,
+    pause_duration: float = 0.28,
+    length_scale: float = 1.08,
+    noise_scale: float = 0.70,
+    noise_w: float = 0.85,
+    use_piper_phonemize: bool = True,
+) -> np.ndarray:
+    """
+    Tổng hợp giọng nói với ngắt nghỉ tự nhiên (Natural Prosody):
+    - Tách văn bản theo câu và pause tag
+    - Inference từng câu riêng rẽ (giữ đúng ngữ điệu đầu/cuối câu)
+    - Chèn khoảng lặng tự nhiên giữa các câu (mặc định 0.28s)
+    - Mặc định length_scale=1.08 giúp đọc thong thả, rõ chữ
+    - Mặc định noise_w=0.85 và noise_scale=0.70 tạo nhịp điệu sinh động, không đều cơ học
+    """
+    sr = config.get("audio", {}).get("sample_rate", 22050)
+    segments = split_text_into_segments(text, default_pause=pause_duration)
+    if not segments:
+        return np.array([], dtype=np.float32)
+
+    audio_parts: list[np.ndarray] = []
+    for idx, (sentence, pause_sec) in enumerate(segments):
+        if not sentence.strip():
+            continue
+        part_audio = synthesize(
+            sentence,
+            session,
+            config,
+            use_piper_phonemize=use_piper_phonemize,
+            noise_scale=noise_scale,
+            length_scale=length_scale,
+            noise_w=noise_w,
+        )
+        audio_parts.append(part_audio)
+
+        # Chèn khoảng lặng sau câu nếu không phải câu cuối
+        if pause_sec > 0 and idx < len(segments) - 1:
+            silence_samples = int(sr * pause_sec)
+            if silence_samples > 0:
+                audio_parts.append(np.zeros(silence_samples, dtype=np.float32))
+
+    if not audio_parts:
+        return np.array([], dtype=np.float32)
+
+    return np.concatenate(audio_parts)
 
 
 # ──────────────────────── Lưu file WAV ──────────────────────────────
