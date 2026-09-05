@@ -735,7 +735,12 @@
                     });
                     
                     if (!chatRes.ok) {
-                        throw new Error('Lỗi gọi API Streaming');
+                        try {
+                            const errData = await chatRes.json();
+                            throw new Error(errData.error || 'Lỗi gọi API Streaming');
+                        } catch(e) {
+                            throw new Error(e.message || 'Lỗi gọi API Streaming');
+                        }
                     }
                     
                     const reader = chatRes.body.getReader();
