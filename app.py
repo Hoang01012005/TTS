@@ -228,8 +228,8 @@ def chat():
         
     try:
         genai.configure(api_key=api_key)
-        # Sử dụng gemini-3.6-flash (phiên bản mới nhất được hỗ trợ)
-        model = genai.GenerativeModel('gemini-3.6-flash')
+        # Sử dụng gemini-1.5-flash (phiên bản mới nhất được hỗ trợ)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         system_instruction = "Bạn là trợ lý ảo Tiếng Việt. Trả lời CỰC KỲ NGẮN GỌN (dưới 15 từ), đi thẳng vào vấn đề. Càng ngắn gọn càng tốt để hệ thống xử lý giọng nói nhanh hơn."
         full_prompt = f"{system_instruction}\n\nNgười dùng hỏi: {prompt}"
@@ -270,7 +270,7 @@ def chat_stream():
     def generate():
         try:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-3.6-flash')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
             # Đã bỏ giới hạn 15 từ để AI trả lời tự nhiên
             system_instruction = "Bạn là trợ lý ảo bằng giọng nói Tiếng Việt. Trả lời đi thẳng vào vấn đề, tự nhiên và thân thiện. TUYỆT ĐỐI KHÔNG sử dụng các ký tự định dạng Markdown (như dấu sao *, dấu thăng #, gạch đầu dòng) vì văn bản này sẽ được đọc bằng giọng nói."
