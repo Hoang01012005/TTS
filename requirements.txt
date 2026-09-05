@@ -3,3 +3,5 @@ numpy==1.26.4
 onnxruntime==1.17.1
 piper-phonemize==1.1.0
 gunicorn==21.2.0
+google-generativeai
+python-dotenv

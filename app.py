@@ -4,9 +4,18 @@ import io
 import os
 import sys
 from pathlib import Path
-from flask import Flask, render_template, request, send_file, jsonify
+from flask import Flask, render_template, request, send_file, jsonify, Response, stream_with_context
+import json
+import base64
+import re
 import numpy as np
 import onnxruntime as ort
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+env_path = Path(__file__).resolve().parent.parent / '.env'
+load_dotenv(dotenv_path=env_path, override=True)
+
 
 # Fix encoding cho Windows console (tránh UnicodeEncodeError)
 if sys.platform == "win32":
@@ -71,8 +80,10 @@ def load_voice(voice_id):
         sample_rate = config.get("audio", {}).get("sample_rate", 22050)
         
         sess_options = ort.SessionOptions()
-        # Chuyển xuống BASIC để tiết kiệm rất nhiều RAM trên Render Free
-        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+        # Bật tối đa tối ưu hóa đồ thị và tận dụng đa luồng CPU để tăng tốc độ
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        import multiprocessing
+        sess_options.intra_op_num_threads = multiprocessing.cpu_count()
         
         providers = []
         available = ort.get_available_providers()
@@ -202,6 +213,132 @@ def tts():
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    data = request.json or {}
+    prompt = data.get("prompt", "").strip()
+    
+    if not prompt:
+        return jsonify({"error": "Vui lòng nhập câu hỏi"}), 400
+        
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key or api_key == "your_api_key_here":
+        return jsonify({"error": "Chưa cấu hình GEMINI_API_KEY"}), 500
+        
+    try:
+        genai.configure(api_key=api_key)
+        # Sử dụng gemini-3.6-flash (phiên bản mới nhất được hỗ trợ)
+        model = genai.GenerativeModel('gemini-3.6-flash')
+        
+        system_instruction = "Bạn là trợ lý ảo Tiếng Việt. Trả lời CỰC KỲ NGẮN GỌN (dưới 15 từ), đi thẳng vào vấn đề. Càng ngắn gọn càng tốt để hệ thống xử lý giọng nói nhanh hơn."
+        full_prompt = f"{system_instruction}\n\nNgười dùng hỏi: {prompt}"
+        
+        response = model.generate_content(full_prompt)
+        reply_text = response.text.strip()
+        
+        return jsonify({"reply": reply_text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/chat_stream', methods=['POST'])
+def chat_stream():
+    data = request.json or {}
+    prompt = data.get("prompt", "").strip()
+    voice_id = data.get("voice", "voice1")
+    
+    try:
+        pause_duration = float(data.get("pause_duration", 0.28))
+    except:
+        pause_duration = 0.28
+
+    try:
+        speed = float(data.get("speed", 1.08))
+    except:
+        speed = 1.08
+
+    if not prompt:
+        return jsonify({"error": "Vui lòng nhập câu hỏi"}), 400
+        
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key or api_key == "your_api_key_here":
+        return jsonify({"error": "Chưa cấu hình GEMINI_API_KEY"}), 500
+        
+    if not load_voice(voice_id):
+        return jsonify({"error": "Không thể tải mô hình cho giọng này"}), 500
+
+    def generate():
+        try:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-3.6-flash')
+            
+            # Đã bỏ giới hạn 15 từ để AI trả lời tự nhiên
+            system_instruction = "Bạn là trợ lý ảo bằng giọng nói Tiếng Việt. Trả lời đi thẳng vào vấn đề, tự nhiên và thân thiện. TUYỆT ĐỐI KHÔNG sử dụng các ký tự định dạng Markdown (như dấu sao *, dấu thăng #, gạch đầu dòng) vì văn bản này sẽ được đọc bằng giọng nói."
+            full_prompt = f"{system_instruction}\n\nNgười dùng hỏi: {prompt}"
+            
+            response = model.generate_content(full_prompt, stream=True)
+            
+            buffer_text = ""
+            # Các dấu hiệu ngắt câu để tổng hợp âm thanh
+            sentence_end_pattern = re.compile(r'([.!?\n]+)')
+            
+            for chunk in response:
+                text_chunk = chunk.text
+                if not text_chunk:
+                    continue
+                
+                # Loại bỏ các ký tự Markdown (*, #, _) để TTS đọc mượt hơn
+                text_chunk = text_chunk.replace('*', '').replace('#', '').replace('_', '')
+                
+                buffer_text += text_chunk
+                
+                # Tìm xem có dấu ngắt câu không
+                match = sentence_end_pattern.search(buffer_text)
+                while match:
+                    split_idx = match.end()
+                    sentence = buffer_text[:split_idx].strip()
+                    buffer_text = buffer_text[split_idx:]
+                    
+                    if len(sentence) > 1:
+                        # Tổng hợp âm thanh cho câu này
+                        audio = synthesize(
+                            sentence,
+                            current_session,
+                            current_config,
+                            use_piper_phonemize=use_piper,
+                            noise_scale=0.70,
+                            length_scale=speed,
+                            noise_w=0.85
+                        )
+                        wav_bytes = audio_to_wav_bytes(audio, current_sample_rate)
+                        b64_audio = base64.b64encode(wav_bytes).decode('utf-8')
+                        
+                        yield json.dumps({"text": sentence, "audio": b64_audio}) + "\n"
+                    
+                    match = sentence_end_pattern.search(buffer_text)
+            
+            # Xử lý đoạn text còn sót lại
+            buffer_text = buffer_text.strip()
+            if len(buffer_text) > 1:
+                audio = synthesize(
+                    buffer_text,
+                    current_session,
+                    current_config,
+                    use_piper_phonemize=use_piper,
+                    noise_scale=0.70,
+                    length_scale=speed,
+                    noise_w=0.85
+                )
+                wav_bytes = audio_to_wav_bytes(audio, current_sample_rate)
+                b64_audio = base64.b64encode(wav_bytes).decode('utf-8')
+                
+                yield json.dumps({"text": buffer_text, "audio": b64_audio}) + "\n"
+                
+        except Exception as e:
+            yield json.dumps({"error": str(e)}) + "\n"
+
+    return Response(stream_with_context(generate()), mimetype='application/x-ndjson')
+
 
 # Khởi tạo model khi load app (cần thiết khi chạy trên server qua gunicorn hoặc docker)
 if not init_model():
