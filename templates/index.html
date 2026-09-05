@@ -786,7 +786,8 @@
                             try {
                                 const data = JSON.parse(line);
                                 if (data.error) {
-                                    throw new Error(data.error);
+                                    // Bắn lỗi ra ngoài vòng lặp thay vì bị nuốt ở catch
+                                    throw new Error("SERVER_ERROR: " + data.error);
                                 }
                                 
                                 if (firstChunk) {
@@ -809,6 +810,9 @@
                                 }
                                 
                             } catch (e) {
+                                if (e.message.startsWith("SERVER_ERROR: ")) {
+                                    throw new Error(e.message.replace("SERVER_ERROR: ", ""));
+                                }
                                 console.error("Lỗi parse JSON:", e, line);
                             }
                         }
